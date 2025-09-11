@@ -15,6 +15,7 @@ for _ in range(4):
     cpu_task(N)
 print("CPU-bound tasks (no async-finish):", time.time() - start)
 
+
 start = time.time()
 with finish():
     for _ in range(4):
