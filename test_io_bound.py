@@ -2,7 +2,7 @@ import os
 import time
 from hpylib import async_, finish
 
-def write_file_block(filename, block_size=1024*1024*100):
+def write_file_block(filename, block_size=1024*1024*200):
     data = b"x" * block_size
     with open(filename, "ab") as f:
         f.write(data)

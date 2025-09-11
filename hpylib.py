@@ -1,65 +1,29 @@
 # hpylib.py
-import threading
 from concurrent.futures import ThreadPoolExecutor
-from functools import partial
 from contextlib import contextmanager
-import queue
 
-# Global registry for thread groups
-_thread_groups = {}
+# Global thread pool and list of futures
+_pool = ThreadPoolExecutor()
 _task_futures = []
 
-_lock = threading.Lock()
+def async_(fn):
+    """Submit a task to run asynchronously in the thread pool."""
+    global _task_futures
+    future = _pool.submit(fn)
+    _task_futures.append(future)
 
-def _get_thread_group(name):
-    """Get or create a sequential worker for a named thread group."""
-    with _lock:
-        if name not in _thread_groups:
-            # Queue for sequential tasks
-            q = queue.Queue()
-            
-            def worker():
-                while True:
-                    task = q.get()
-                    if task is None:
-                        break
-                    try:
-                        task()
-                    except Exception as e:
-                        print(f"Task exception: {e}")
-                    q.task_done()
-            
-            t = threading.Thread(target=worker, daemon=True)
-            t.start()
-            _thread_groups[name] = (q, t)
-        return _thread_groups[name]
-
-def async_(fn, thread=None):
-    """Submit an async task. If thread is provided, tasks run sequentially in that thread."""
-    if thread is None:
-        # Run in a regular thread pool (default max_workers = CPU cores)
-        pool = ThreadPoolExecutor()
-        future = pool.submit(fn)
-        _task_futures.append(future)
-    else:
-        q, _ = _get_thread_group(thread)
-        q.put(fn)
+# Alias for async_
+spawn = async_
 
 @contextmanager
 def finish():
-    """Context manager: wait for all async tasks to complete."""
+    """Context manager: wait for all async tasks submitted inside the block."""
     global _task_futures
     try:
         yield
     finally:
-        # Wait for all futures
+        # Wait for all submitted tasks to finish
         for f in _task_futures:
-            f.result()  # will raise exceptions if any
+            f.result()  # raises exception if any
+        # Clear the list for the next finish block
         _task_futures.clear()
-        
-        # Wait for all thread-group queues to finish
-        for q, t in _thread_groups.values():
-            q.put(None)  # sentinel to stop worker
-        for q, t in _thread_groups.values():
-            t.join()
-        _thread_groups.clear()
