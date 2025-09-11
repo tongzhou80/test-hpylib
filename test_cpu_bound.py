@@ -8,7 +8,7 @@ def cpu_task(n):
         s += i ** 2
     return s
 
-N = 100_000_000
+N = 10_000_000
 
 start = time.time()
 for _ in range(4):
