@@ -1,55 +1,79 @@
-# hpylib.py
-from concurrent.futures import ThreadPoolExecutor
+# hpylib/__init__.py
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 from contextlib import contextmanager
 import itertools
+import os
 
-# Global thread pool and list of futures
-_pool = ThreadPoolExecutor()
+# -------------------------
+# Configuration / pool
+# -------------------------
+mp_or_mt = os.environ.get("HPYLIB_MODE", "mp")  # default to "mp"
+_pool = None
+
+def _get_pool():
+    """Lazy initialization of the pool."""
+    global _pool
+    if _pool is None:
+        if mp_or_mt == "mp":
+            _pool = ProcessPoolExecutor()
+        elif mp_or_mt == "mt":
+            _pool = ThreadPoolExecutor()
+        else:
+            raise ValueError(f"Invalid value for mp_or_mt: {mp_or_mt}. Use 'mp' or 'mt'.")
+    return _pool
+
 _task_futures = []
 
-
-def async_(fn):
-    """Submit a task to run asynchronously in the thread pool."""
-    global _task_futures
-    future = _pool.submit(fn)
+# -------------------------
+# Async / spawn
+# -------------------------
+def async_(fn, *args, **kwargs):
+    """Submit a task to run asynchronously in the pool, with optional args/kwargs."""
+    future = _get_pool().submit(fn, *args, **kwargs)
     _task_futures.append(future)
     return future
 
-
-# Alias for async_
+# Alias
 spawn = async_
 
-
+# -------------------------
+# Finish context manager
+# -------------------------
 @contextmanager
 def finish():
     """Context manager: wait for all async tasks submitted inside the block."""
-    global _task_futures
     try:
         yield
     finally:
-        # Wait for all submitted tasks to finish
         for f in _task_futures:
             f.result()  # raises exception if any
-        # Clear the list for the next finish block
         _task_futures.clear()
 
+# -------------------------
+# Top-level pmap worker
+# -------------------------
+def _pmap_worker(chunk, fn):
+    """Top-level worker function for pmap (picklable)."""
+    return [fn(x) for x in chunk]
 
+# -------------------------
+# Parallel map
+# -------------------------
 def pmap(fn, iters):
     """
     Parallel map: apply fn to each element of iters in parallel.
     Blocking call. Returns list of results.
     """
-    n_workers = _pool._max_workers
+    pool = _get_pool()
+    n_workers = pool._max_workers
     iters = list(iters)
     n = len(iters)
-    chunk_size = (n + n_workers - 1) // n_workers  # ceil division
+    if n == 0:
+        return []
 
-    # Divide the work into chunks
+    chunk_size = (n + n_workers - 1) // n_workers  # ceil division
     chunks = [iters[i:i + chunk_size] for i in range(0, n, chunk_size)]
 
-    # Submit one chunk per worker
-    futures = [_pool.submit(lambda chunk=chunk: [fn(x) for x in chunk]) for chunk in chunks]
-
-    # Flatten results in the original order
+    futures = [pool.submit(_pmap_worker, chunk, fn) for chunk in chunks]
     results = list(itertools.chain.from_iterable(f.result() for f in futures))
     return results

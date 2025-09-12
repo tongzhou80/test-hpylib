@@ -27,7 +27,7 @@ def count_primes_par(start: int, end: int) -> int:
 # -------------------------------
 if __name__ == "__main__":
     start_num = 1
-    end_num = 200000  # small range for demo
+    end_num = 2000_000  # small range for demo
 
     # Sequential
     t0 = time.perf_counter()
