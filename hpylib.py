@@ -7,7 +7,7 @@ import os
 # -------------------------
 # Configuration / pool
 # -------------------------
-mp_or_mt = os.environ.get("HPYLIB_MODE", "mp")  # default to "mp"
+mp_or_mt = os.environ.get("HPYLIB_MODE", "mt")  # default to "mt"
 _pool = None
 
 def _get_pool():
